@@ -1,0 +1,17 @@
+#!/bin/sh
+
+PREFIX="/usr/local/bin"
+
+INSTALL() {
+	cp phetch.pl $PREFIX/phetch
+	printf '%s\n' "phetch installed"
+}
+
+UNINSTALL() {
+	rm $PREFIX/phetch
+	printf '%s\n' "phetch removed"
+}
+
+[ -n "$1" ] || exit
+[ "$1" = "install" ] && INSTALL
+[ "$1" = "uninstall" ] && UNINSTALL
