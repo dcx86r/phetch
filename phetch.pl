@@ -175,7 +175,6 @@ sub main {
 	my $rel = asort(\@vals);
 	my $run = 1;
 	my $resized = 0;
-	my $cfgerr;
 	
 	my $scr = Term::Screen->new();
 	$scr->curinvis();
