@@ -1,6 +1,6 @@
-## Phetch - Auto-refreshing Fetch Script
+## Phetch - Linux System Info Fetch Script
 
-`phetch` is an auto-refreshing take on the typical system info fetch script.
+`phetch` is a Linux system info fetch script that automatically refreshes.
 
 ![Screenshot](https://raw.githubusercontent.com/dcx86r/phetch/master/example.png)
 
@@ -11,6 +11,10 @@
 
 #### Installation
 
-`[sudo] cpan -i Term::Screen` to install required module
+`[sudo] cpan -i Term::Screen` to install required module  
 `[sudo] sh installer install` to install in $PATH  
 `[sudo] sh installer uninstall` to uninstall
+
+#### Usage
+
+`phetch` to run, `^C` to exit
