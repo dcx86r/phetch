@@ -4,9 +4,13 @@ use strict;
 use warnings;
 use Encode qw(encode_utf8);
 use Term::Screen; # CPAN
+use Term::ANSIColor; # core
 use Config;
 use Fcntl;
 require 'syscall.ph';
+
+# ToDo - print colors
+# terminal dimens geometry would be nice...
 
 # comment out any unwanted values below
 sub user_config { 
@@ -96,7 +100,7 @@ sub lsb_info {
 	return sub { return $line };
 }
 
-sub cpuinfo {
+sub cpu_info {
 	sysopen(my $fh, "/proc/cpuinfo", O_RDONLY)
 		|| die "can't open /proc/cpuinfo: $!\n";
 	sysread($fh, my $data, 300);
@@ -105,11 +109,12 @@ sub cpuinfo {
 	foreach (@lines) {
 		next unless $_ =~ m/model name/;
 		$_ =~ s/(Processor|\(tm\))//ig;
-		return substr($_, (index($_, ":")+2));
+		my $str = substr($_, (index($_, ":")+2));
+		return sub { return $str };
 	}
 }
 
-sub meminfo {
+sub mem_info {
 	sysopen(my $fh, "/proc/meminfo", O_RDONLY)
 		|| die "can't open /proc/meminfo: $!\n";
 	sysread($fh, my $data, 300);
@@ -127,7 +132,7 @@ sub meminfo {
 	my $fmtstr;
 	open($fh, ">", \$fmtstr);
 	printf $fh '%d/%d %s', 
-		$convert->($used), $convert->($info{MemTotal}), "MB";
+		$convert->($used), $convert->($info{MemTotal}), "MiB";
 	return $fmtstr;
 }
 
@@ -135,6 +140,35 @@ sub asort {
 	my $aref = shift;
 	my @sorted = sort { length($a) <=> length($b) } @$aref;
 	return length($sorted[-1]);
+}
+
+sub draw_border {
+	my $rlen = shift;
+	my $brdr = shift;
+	my $bccref = shift;
+	my $title = shift;
+	my $enc = sub { 
+		my $key = shift;
+# probably should run everything through this
+		return colored(encode_utf8(chr(${$bccref}{$key})), "green");
+	};
+
+	my $title_pos = $title ? (($rlen+2)/2) - (length($title)/2) : 0;
+	my @colored = split(/@/, $title);
+	my $title_str = colored($colored[0], "blue");
+	$title_str .= colored("@", "yellow");
+	$title_str .= colored($colored[1], "magenta");
+
+	my $str = do {
+		if ($brdr eq "top") {
+			$enc->('tl') . ($enc->('hc') x ($title_pos-1)) . 
+			$enc->('lp') . $title_str . $enc->('rp') .
+			$enc->('hc') x (($rlen) - ($title_pos+length($title))+1) .
+			$enc->('tr')
+		} elsif ($brdr eq "bottom") {
+			$enc->('bl') . ($enc->('hc') x ($rlen+2)) . $enc->('br')
+		}
+	};
 }
 
 sub cleanup {
@@ -145,11 +179,15 @@ sub cleanup {
 }
 
 sub main {
+# CPU and SYS also static
+	my $cpu = cpu_info();
+#	print $cpu->(); exit;
 	my $distro = lsb_info();
+	my $title = sub { return join('@', $ENV{USER}, uname("nodename")) };
 
 	my $table = {
-		CPU => \&cpuinfo,
-		MEM => \&meminfo,
+		CPU => sub { return $cpu->() },
+		MEM => \&mem_info,
 		SYS => sub { return join(' ', uname("sysname"), uname("release")) },
 		DIST => sub { return $distro->() },
 		SHELL => sub { return $ENV{SHELL} },
@@ -157,6 +195,17 @@ sub main {
 		PROCS => sub { return sysinfo("procs") },
 		UPTIME => sub { return uptime(sysinfo("uptime")) }
 	};
+
+	my %bcc = ( # border character codes
+		'tl' => 0x256D, # top left
+		'tr' => 0x256E, # top right
+		'bl' => 0x2570, # bottom left
+		'br' => 0x256F, # bottom right
+		'hc' => 0x2550, # horizontal char
+		'vc' => 0x2551, # vertical char
+		'lp' => 0x2561, # left perpendicular
+		'rp' => 0x255E, # right perpendicular
+	);
 
 	my @vals = split(/\n/, user_config());
 	foreach (@vals) { $_ =~ s/^\s+|\s+$//g }
@@ -170,11 +219,29 @@ sub main {
 		print "Invalid config value(s): " . join(', ', @errval);
 		exit 1;
 	}
-	
-	my $pad = 3;
+
 	my $rel = asort(\@vals);
+	my $pad = 3;
+	my @vstrl;
+	my $rlen;
 	my $run = 1;
 	my $resized = 0;
+
+# setting max width here based on values that should stay constant
+	for my $i (0..$#vals) {
+		unless ($#vstrl == $#vals) {
+			push @vstrl, $table->{$vals[$i]}->();
+			next;
+		}
+	}
+
+	my $top;
+	my $bottom;
+	my $title_pos;
+	my $vlen = asort(\@vstrl);
+	$rlen = ($pad + $rel + $vlen);
+	$top = draw_border($rlen, "top", \%bcc, $title->());
+	$bottom = draw_border($rlen, "bottom", \%bcc);
 	
 	my $scr = Term::Screen->new();
 	$scr->curinvis();
@@ -182,21 +249,28 @@ sub main {
 
 	while ($run) {
 		$SIG{INT} = sub { $run-- }; 
-		$SIG{WINCH} = sub { $resized++ };
+		$SIG{WINCH} = sub { $resized++ };	
 		
 		if ($resized) {
 			undef $scr;
 			undef $resized;
+# abstract into redraw sub?
 			$scr = Term::Screen->new();
 			$scr->clrscr();
+#			border redraw
 		}
 
+		$scr->at(0,0)->puts($top);
+		$scr->at((3+scalar(@vals)),0)->puts($bottom);
+
 		for my $i (0..$#vals) {
-			$scr->at($i, 0)->bold()->puts("$vals[$i]")
+			my $desc = colored($vals[$i], "red");
+			my $val = $table->{$vals[$i]}->();
+			$scr->at((2+$i), 2)->bold()->puts($desc)->normal()
 				->puts(" " x ($pad + $rel - length($vals[$i])))
-				->puts($table->{$vals[$i]}->())
+				->puts($val);
 		}
-		select(undef,undef,undef,0.5);
+		sleep 1;
 	}
 	cleanup(\$scr);
 }
