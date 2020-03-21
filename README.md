@@ -2,7 +2,7 @@
 
 `phetch` is a Linux system info fetch script that automatically refreshes.
 
-![Screenshot](https://raw.githubusercontent.com/dcx86r/phetch/master/example.png)
+![Screenshot](https://raw.githubusercontent.com/dcx86r/phetch/testing/example.png)
 
 #### Dependencies
 
